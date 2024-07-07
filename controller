@@ -1,1 +1,170 @@
 
+Description of Worker Functions:
+
+The worker script is responsible for processing images by downloading, converting, and saving them. It also updates the status of the processed images and sends the results back to the main process. Here's a detailed description of the worker functions and their operations:
+
+Dependencies :
+
+axios: Used to download images from the provided URLs.
+sharp: Used to process images (e.g., converting image formats and adjusting quality).
+uuidv4: Used to generate unique identifiers for output file names.
+path: Provides utilities for working with file and directory paths.
+fs: Provides an API for interacting with the file system.
+db: Database instance.
+Image and Request: Sequelize models for interacting with the Image and Request tables in the database.
+
+Main Worker Function :
+
+The worker listens for messages containing image processing tasks. Upon receiving a message, it performs the following steps:
+
+1. Listen for Messages:
+
+The worker uses process.on('message', async (message) => {...}) to listen for messages sent by the main process. Each message contains the details of an image processing task:
+
+* id: The ID of the image record in the database.
+* requestId: The ID of the request this image belongs to.
+* productName: The name of the product associated with the image.
+* inputUrl: The URL of the image to be processed.
+
+2. Download the Image:
+
+The worker uses axios to download the image from the provided inputUrl:
+
+const response = await axios({
+    url: inputUrl,
+    responseType: 'arraybuffer'
+});
+const inputBuffer = Buffer.from(response.data, 'binary');
+
+
+3. Process the Image : 
+The worker uses sharp to process the downloaded image, converting it to JPEG format with a quality of 50%:
+
+const outputBuffer = await sharp(inputBuffer).jpeg({ quality: 50 }).toBuffer();
+
+4. Save the Processed Image :
+
+The processed image is saved to the local filesystem with a unique file name:
+
+const outputFileName = `${uuidv4()}.jpg`;
+const outputPath = path.join(__dirname, '../processed', outputFileName);
+fs.writeFileSync(outputPath, outputBuffer);
+
+5. Update the Database : 
+The worker updates the outputUrl and status fields of the Image record in the database:
+
+await Image.update(
+    { outputUrl: `http://localhost:3000/processed/${outputFileName}`, status: 'completed' },
+    { where: { id } }
+);
+
+6. Check for Remaining Pending Images : 
+The worker counts the number of remaining images with the status pending for the given requestId. If there are no remaining pending images, it updates the status of the Request to completed:
+
+const remaining = await Image.count({ where: { requestId, status: 'pending' } });
+if (remaining === 0) {
+    await Request.update({ status: 'completed' }, { where: { requestId } });
+}
+
+
+7. Send the Result Back to the Main Process :
+The worker sends a message back to the main process with the details of the processed image:
+ 
+process.send({
+    requestId,
+    productName,
+    inputUrl,
+    outputUrl: `http://localhost:3000/processed/${outputFileName}`
+});
+
+8. Error Handling :
+The worker logs any errors that occur during the processing of an image:
+
+} catch (error) {
+    console.error(`Error processing image: ${inputUrl}`, error);
+}
+
+
+
+=================================================================================================================
+
+API Documentation:
+
+Overview
+This API handles the processing and management of image data from CSV files. The primary functionalities include uploading a CSV file, checking the status of the request, and handling webhook notifications.
+
+Endpoints:
+
+1. Upload CSV:
+
+    URL: /api/images/upload
+    Method: POST
+    Description: Uploads a CSV file and processes the image data.
+    Request Headers:
+    Content-Type: multipart/form-data
+    Request Parameters:
+    file (form-data): The CSV file to be uploaded.
+Request Example:
+
+URL: http://localhost:3000/api/images/upload
+
+Responses:
+200 OK:
+{
+  "requestId": "0db45428-ef11-4f89-abab-39869317cc4e"
+}
+
+400 Bad Request:
+
+{
+  "message": "No file uploaded."
+}
+
+2. Check Status: 
+
+URL: /api/images/status/:request_id
+Method: GET
+Description: Retrieves the status of the image processing request.
+Request Parameters:
+request_id (path): The ID of the request to check status.
+Request Example:
+
+URL:http://localhost:3000/api/images/status/0db45428-ef11-4f89-abab-39869317cc4e
+Responses:
+200 OK:
+{
+  "request_id": "0db45428-ef11-4f89-abab-39869317cc4e",
+  "status": "pending"
+}
+404 Not Found:
+{
+  "message": "Request ID not found."
+}
+500 Internal Server Error:
+{
+  "message": "Error message detailing what went wrong."
+}
+3. Webhook:
+
+URL: /api/images/webhook
+Method: POST
+Description: Handles webhook notifications and processes image data accordingly.
+Request Headers:
+Content-Type: application/json
+Request Body:
+request_id (string): The ID of the request to process.
+status (string): The status of the request.
+Request Example:
+"Content-Type: application/json" 
+ '{"request_id": "0db45428-ef11-4f89-abab-39869317cc4e", "status": "pending"}'
+
+URL: http://localhost:3000/api/images/webhook
+Responses:
+200 OK:
+{
+  "message": "Webhook received and processed."
+}
+500 Internal Server Error:
+{
+  "message": "Webhook not received ."
+}
