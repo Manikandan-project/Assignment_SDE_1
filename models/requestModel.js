@@ -6,7 +6,7 @@ const Request = sequelize.define('requests', {
         type: DataTypes.UUID,
         defaultValue: DataTypes.UUIDV4,
         allowNull: false,
-        primaryKey: true
+        primaryKey: true 
     },
     status: {
         type: DataTypes.ENUM('pending', 'processing', 'completed'),
