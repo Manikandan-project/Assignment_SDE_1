@@ -39,8 +39,8 @@
         input_url TEXT NOT NULL,
         output_url TEXT,
         status ENUM('pending', 'processing', 'completed') DEFAULT 'pending',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (request_id) REFERENCES requests(request_id)
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    
     );
     ```
 
